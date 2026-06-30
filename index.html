@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent Playground - 任务分解器</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #16213e 100%);
+  min-height: 100vh;
+  color: #e0e0ff;
+  padding: 20px;
+}
+.container { max-width: 900px; margin: 0 auto; }
+header { text-align: center; margin-bottom: 30px; }
+header h1 { font-size: 2.2rem; background: linear-gradient(90deg, #00f5ff, #ff6b9d, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+header p { color: #8892b0; margin-top: 8px; font-size: 0.95rem; }
+.card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+}
+.input-area { display: flex; gap: 12px; flex-wrap: wrap; }
+.input-area input {
+  flex: 1;
+  min-width: 250px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(0,0,0,0.3);
+  color: #e0e0ff;
+  font-size: 1rem;
+  outline: none;
+}
+.input-area input:focus { border-color: #00f5ff; box-shadow: 0 0 0 3px rgba(0,245,255,0.15); }
+.btn {
+  padding: 14px 28px;
+  border-radius: 12px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: linear-gradient(135deg, #00f5ff, #00a8e8);
+  color: #0f0f23;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,245,255,0.3); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.api-config { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 0.85rem; color: #8892b0; }
+.api-config input {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.3);
+  color: #e0e0ff;
+  font-size: 0.85rem;
+  width: 280px;
+}
+.workflow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+  position: relative;
+}
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  top: 48px;
+  width: 2px;
+  height: calc(100% - 32px);
+  background: linear-gradient(180deg, rgba(0,245,255,0.5), rgba(0,245,255,0.1));
+}
+.step-num {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00f5ff, #00a8e8);
+  color: #0f0f23;
+  font-weight: 700;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.step-num.done { background: linear-gradient(135deg, #00ff88, #00cc6a); }
+.step-num.running { background: linear-gradient(135deg, #ff6b9d, #c084fc); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,157,0.4); } 50% { box-shadow: 0 0 0 10px rgba(255,107,157,0); } }
+.step-content { flex: 1; }
+.step-title { font-weight: 600; font-size: 1.05rem; margin-bottom: 6px; color: #fff; }
+.step-desc { color: #8892b0; font-size: 0.9rem; line-height: 1.5; }
+.step-result {
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: rgba(0,245,255,0.08);
+  border-left: 3px solid #00f5ff;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.9rem;
+  color: #ccd6f6;
+  display: none;
+}
+.step-result.show { display: block; }
+.tool-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 8px;
+}
+.tool-badge.search { background: rgba(255,193,7,0.2); color: #ffc107; }
+.tool-badge.calc { background: rgba(0,255,136,0.2); color: #00ff88; }
+.tool-badge.llm { background: rgba(192,132,252,0.2); color: #c084fc; }
+.output-area { margin-top: 20px; padding: 20px; background: rgba(0,0,0,0.3); border-radius: 12px; border: 1px solid rgba(0,245,255,0.2); display: none; }
+.output-area.show { display: block; }
+.output-area h3 { color: #00f5ff; margin-bottom: 12px; font-size: 1.1rem; }
+.output-area pre { white-space: pre-wrap; word-wrap: break-word; font-size: 0.9rem; color: #ccd6f6; line-height: 1.6; }
+.quick-tasks { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.quick-task {
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #8892b0;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.quick-task:hover { background: rgba(0,245,255,0.1); border-color: #00f5ff; color: #00f5ff; }
+.loading { text-align: center; padding: 40px; color: #8892b0; }
+.loading::after { content: '...'; animation: dots 1.5s infinite; }
+@keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
+footer { text-align: center; margin-top: 40px; color: #555; font-size: 0.8rem; }
+.error { color: #ff6b6b; padding: 12px; background: rgba(255,0,0,0.1); border-radius: 8px; margin-top: 12px; display: none; }
+.error.show { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🤖 AI Agent Playground</h1>
+    <p>输入一个复杂任务，看 AI Agent 如何自动分解、调用工具、逐步执行</p>
+  </header>
+
+  <div class="card">
+    <div class="input-area">
+      <input type="text" id="taskInput" placeholder="例如：帮我规划一次从北京到东京的3天旅行，预算5000元" />
+      <button class="btn btn-primary" id="runBtn" onclick="runAgent()">🚀 分解任务</button>
+    </div>
+    <div class="quick-tasks">
+      <span class="quick-task" onclick="setTask('帮我查询今天北京的天气，然后推荐3个适合户外活动的地方')">🌤 天气+推荐</span>
+      <span class="quick-task" onclick="setTask('计算 1500 的 15% 折扣后价格，再算出加上 8% 税费的总金额')">🧮 计算折扣</span>
+      <span class="quick-task" onclick="setTask('分析特斯拉股票最近的趋势，并给出投资建议')">📈 股票分析</span>
+      <span class="quick-task" onclick="setTask('帮我写一首关于夏天的短诗，然后翻译成英文')">✍️ 写诗+翻译</span>
+    </div>
+    <div class="api-config">
+      <label>API Key:</label>
+      <input type="password" id="apiKey" placeholder="输入 AISA API Key（可选，留空使用演示模式）" />
+      <label>Model:</label>
+      <select id="modelSelect" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#e0e0ff;">
+        <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+        <option value="gpt-4.1">gpt-4.1</option>
+        <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+      </select>
+    </div>
+    <div class="error" id="errorMsg"></div>
+  </div>
+
+  <div class="card" id="workflowCard" style="display:none;">
+    <div class="workflow" id="workflow"></div>
+  </div>
+
+  <div class="output-area" id="finalOutput">
+    <h3>📋 最终结果</h3>
+    <pre id="outputText"></pre>
+  </div>
+
+  <footer>
+    <p>🦐 小蓝虾复刻版 | 灵感来自 agent-service-toolkit | 部署于 GitHub Pages</p>
+  </footer>
+</div>
+
+<script>
+const API_BASE = 'https://api.aisa.one/v1/chat/completions';
+
+function setTask(text) {
+  document.getElementById('taskInput').value = text;
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+function createStep(num, title, desc, tool) {
+  const toolBadge = tool ? `<span class="tool-badge ${tool.type}">${tool.name}</span>` : '';
+  return `
+    <div class="step" id="step-${num}">
+      <div class="step-num" id="step-num-${num}">${num}</div>
+      <div class="step-content">
+        <div class="step-title">${title}${toolBadge}</div>
+        <div class="step-desc">${desc}</div>
+        <div class="step-result" id="step-result-${num}"></div>
+      </div>
+    </div>
+  `;
+}
+
+function updateStepStatus(num, status) {
+  const numEl = document.getElementById(`step-num-${num}`);
+  if (status === 'running') numEl.classList.add('running');
+  if (status === 'done') { numEl.classList.remove('running'); numEl.classList.add('done'); numEl.innerHTML = '✓'; }
+}
+
+function showStepResult(num, text) {
+  const el = document.getElementById(`step-result-${num}`);
+  el.textContent = text;
+  el.classList.add('show');
+}
+
+async function callLLM(messages, apiKey) {
+  const model = document.getElementById('modelSelect').value;
+  const resp = await fetch(API_BASE, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({ model, messages, temperature: 0.7 })
+  });
+  if (!resp.ok) throw new Error(`API错误: ${resp.status}`);
+  const data = await resp.json();
+  return data.choices[0].message.content;
+}
+
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runAgent() {
+  const task = document.getElementById('taskInput').value.trim();
+  if (!task) { showError('请输入任务描述'); return; }
+
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = '分解中...';
+
+  document.getElementById('workflowCard').style.display = 'block';
+  document.getElementById('finalOutput').classList.remove('show');
+  const workflow = document.getElementById('workflow');
+  workflow.innerHTML = '<div class="loading">AI Agent 正在分析任务</div>';
+
+  try {
+    let steps = [];
+    let stepResults = [];
+
+    if (apiKey) {
+      // 使用真实LLM API
+      const step1prompt = `你是一个AI Agent任务分解器。用户任务："${task}"
+
+请分析这个任务，将其分解为2-4个清晰的步骤。每个步骤说明：
+1. 步骤名称
+2. 步骤描述（具体做什么）
+3. 使用的工具类型（search/calc/llm）
+
+严格按此JSON格式输出（不要加markdown代码块）：
+{"steps":[{"name":"步骤名","description":"描述","tool":"search|calc|llm"}]}`;
+
+      updateStepStatus(0, 'running');
+      workflow.innerHTML = createStep(1, '任务分析与分解', 'Agent正在理解你的需求，将其拆分为可执行的子任务...', {name: 'LLM', type: 'llm'});
+      updateStepStatus(1, 'running');
+      await sleep(800);
+
+      const decomposition = await callLLM([{role:'user', content:step1prompt}], apiKey);
+      let parsed;
+      try {
+        const clean = decomposition.replace(/```json\n?|\n?```/g, '').trim();
+        parsed = JSON.parse(clean);
+      } catch {
+        //  fallback: 手动解析
+        parsed = { steps: [
+          { name: '信息收集', description: '搜索并收集任务相关信息', tool: 'search' },
+          { name: '分析处理', description: '对收集的信息进行分析和计算', tool: 'llm' },
+          { name: '生成结果', description: '整合所有信息生成最终回答', tool: 'llm' }
+        ]};
+      }
+      steps = parsed.steps;
+      showStepResult(1, `任务已分解为 ${steps.length} 个步骤：${steps.map(s => s.name).join(' → ')}`);
+      updateStepStatus(1, 'done');
+      await sleep(500);
+
+      // 执行每个步骤
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const stepNum = i + 2;
+        const toolMap = { search: '搜索', calc: '计算', llm: 'LLM推理' };
+        const toolName = toolMap[step.tool] || 'LLM';
+
+        workflow.innerHTML += createStep(stepNum, step.name, step.description, {name: toolName, type: step.tool || 'llm'});
+        updateStepStatus(stepNum, 'running');
+        await sleep(600);
+
+        // 调用LLM模拟执行
+        const execPrompt = `你正在执行一个AI Agent任务的步骤。\n\n原始任务：${task}\n\n当前步骤（第${i+1}/${steps.length}步）：${step.name}\n步骤描述：${step.description}\n工具：${toolName}\n\n请给出这个步骤的执行结果（简洁，2-3句话）。如果这是最后一步，给出完整的最终答案。`;
+        const result = await callLLM([{role:'user', content:execPrompt}], apiKey);
+        showStepResult(stepNum, result);
+        updateStepStatus(stepNum, 'done');
+        stepResults.push(result);
+        await sleep(400);
+      }
+
+      // 最终结果
+      const finalPrompt = `基于以下任务执行步骤的结果，给出最终的完整答案。\n\n原始任务：${task}\n\n各步骤结果：\n${stepResults.map((r, i) => `步骤${i+1}：${r}`).join('\n')}\n\n请整合以上结果，给出清晰、完整的最终答案。`;
+      const finalResult = await callLLM([{role:'user', content:finalPrompt}], apiKey);
+      document.getElementById('outputText').textContent = finalResult;
+      document.getElementById('finalOutput').classList.add('show');
+
+    } else {
+      // 演示模式：模拟执行
+      await sleep(500);
+      workflow.innerHTML = createStep(1, '任务分析与分解', 'Agent正在理解你的需求，将其拆分为可执行的子任务...', {name: 'LLM', type: 'llm'});
+      updateStepStatus(1, 'running');
+      await sleep(1200);
+      showStepResult(1, `任务已分解为 3 个步骤：信息收集 → 分析处理 → 生成结果`);
+      updateStepStatus(1, 'done');
+      await sleep(600);
+
+      // 模拟步骤
+      const demoSteps = [
+        { name: '信息收集', desc: '根据任务需求，搜索相关背景信息和数据', tool: {name: '搜索', type: 'search'} },
+        { name: '分析处理', desc: '对收集到的信息进行逻辑分析和整理', tool: {name: 'LLM推理', type: 'llm'} },
+        { name: '生成结果', desc: '整合所有信息，生成最终完整答案', tool: {name: 'LLM推理', type: 'llm'} }
+      ];
+
+      const demoResults = [
+        '已收集到相关背景信息，包括最新的数据和参考资料。',
+        '已完成逻辑分析，识别出关键要素和约束条件。',
+        '已整合所有信息，形成最终答案。'
+      ];
+
+      for (let i = 0; i < demoSteps.length; i++) {
+        const s = demoSteps[i];
+        const num = i + 2;
+        workflow.innerHTML += createStep(num, s.name, s.desc, s.tool);
+        updateStepStatus(num, 'running');
+        await sleep(800 + Math.random() * 600);
+        showStepResult(num, demoResults[i]);
+        updateStepStatus(num, 'done');
+        await sleep(400);
+      }
+
+      document.getElementById('outputText').textContent = `[演示模式] 请填入 API Key 以获取真实 AI 执行结果。\n\n任务：${task}\n\n在真实模式下，Agent 会：\n1. 用 LLM 智能分解任务\n2. 按步骤调用工具（搜索/计算/推理）\n3. 逐步执行并显示结果\n4. 汇总生成最终答案`;
+      document.getElementById('finalOutput').classList.add('show');
+    }
+
+  } catch (err) {
+    showError(err.message || '执行出错，请检查 API Key 是否正确');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 分解任务';
+  }
+}
+</script>
+</body>
+</html>
